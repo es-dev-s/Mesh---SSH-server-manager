@@ -1,0 +1,38 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
+    system-ui, sans-serif;
+}
+
+body {
+  @apply m-0 overflow-hidden bg-[#f5f5f7] text-neutral-900 antialiased;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  @apply h-screen w-screen;
+}
+
+[data-tauri-drag-region] {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+[data-no-drag="true"],
+[data-tauri-drag-region="false"],
+button,
+a,
+input,
+select,
+textarea {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+button {
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
