@@ -6,6 +6,8 @@ import { useServerTabsStore } from "../../stores/useServerTabsStore";
 import { ServerTerminal } from "./ServerTerminal";
 import { ServerEditor } from "./ServerEditor";
 import { Folder, Terminal, FileCode, X, Plus } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
+import { useEffect, useMemo } from "react";
 
 export function ServerPage() {
   const {
@@ -20,6 +22,21 @@ export function ServerPage() {
   } = useServerExplorer();
 
   const { tabs, activeTabIndex, addTab, closeTab, setActiveTabIndex } = useServerTabsStore();
+
+  const terminalTabs = useMemo(
+    () => tabs.filter((tab): tab is Extract<typeof tab, { type: "terminal" }> => tab.type === "terminal"),
+    [tabs],
+  );
+
+  useEffect(() => {
+    const activeTerminalIds = terminalTabs.map((tab) => tab.id);
+
+    void invoke<string[]>("sync_terminal_sessions", {
+      activeIds: activeTerminalIds,
+    }).catch(() => {
+      // Running outside Tauri during web dev.
+    });
+  }, [terminalTabs]);
 
   function handleOpen(node: FileSystemNode) {
     if (node.type === "folder") {
@@ -61,12 +78,10 @@ export function ServerPage() {
                     : "bg-[#161617] text-neutral-400 hover:bg-[#1a1a1c] hover:text-neutral-200",
                 ].join(" ")}
               >
-                {/* Icon */}
                 {tab.type === "explorer" && <Folder className="h-3.5 w-3.5" />}
                 {tab.type === "terminal" && <Terminal className="h-3.5 w-3.5" />}
                 {tab.type === "editor" && <FileCode className="h-3.5 w-3.5" />}
 
-                {/* Title */}
                 <span className="truncate max-w-[120px]">
                   {tab.type === "explorer"
                     ? "File Explorer"
@@ -75,7 +90,6 @@ export function ServerPage() {
                     : tab.name}
                 </span>
 
-                {/* Dirty state indicator / close button */}
                 {tab.type !== "explorer" && (
                   <div className="flex h-4 w-4 items-center justify-center rounded-sm hover:bg-white/10 active:scale-90 transition-all">
                     {tab.type === "editor" && tab.isDirty ? (
@@ -94,7 +108,6 @@ export function ServerPage() {
                   </div>
                 )}
 
-                {/* Bottom line glow for active tab */}
                 {isActive && (
                   <div className="absolute bottom-[-1px] left-0 right-0 h-[2px] bg-[#f8f9fa] z-10" />
                 )}
@@ -103,7 +116,6 @@ export function ServerPage() {
           })}
         </div>
 
-        {/* Action button */}
         <button
           onClick={handleNewTerminal}
           title="New Terminal"
@@ -113,11 +125,11 @@ export function ServerPage() {
         </button>
       </div>
 
-      {/* Page Content Panel Router */}
-      <div className="min-h-0 flex-1 overflow-hidden">
+      {/* Page Content Panel Router — terminal tabs stay mounted (stacked) so PTY channels are not torn down on tab switch */}
+      <div className="relative min-h-0 flex-1 overflow-hidden">
         {activeTab.type === "explorer" && (
           <div
-            className="h-full w-full overflow-y-auto px-6 py-6"
+            className="absolute inset-0 overflow-y-auto px-6 py-6"
             onClick={(event) => {
               if (event.target === event.currentTarget) {
                 setSelectedId(null);
@@ -150,17 +162,31 @@ export function ServerPage() {
           </div>
         )}
 
-        {activeTab.type === "terminal" && (
-          <div className="h-full w-full p-4">
-            <ServerTerminal id={activeTab.id} startupCommand={activeTab.startupCommand} />
-          </div>
-        )}
-
         {activeTab.type === "editor" && (
-          <div className="h-full w-full p-4">
+          <div className="absolute inset-0 p-4">
             <ServerEditor path={activeTab.path} name={activeTab.name} />
           </div>
         )}
+
+        {terminalTabs.map((tab) => {
+          const isActive = activeTab.type === "terminal" && activeTab.id === tab.id;
+          return (
+            <div
+              key={tab.id}
+              className={[
+                "absolute inset-0 p-4",
+                isActive ? "z-10 visible" : "invisible pointer-events-none z-0",
+              ].join(" ")}
+              aria-hidden={!isActive}
+            >
+              <ServerTerminal
+                id={tab.id}
+                startupCommand={tab.startupCommand}
+                isActive={isActive}
+              />
+            </div>
+          );
+        })}
       </div>
     </div>
   );

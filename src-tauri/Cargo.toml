@@ -30,5 +30,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "time", "macros", "sync"
 parking_lot = "0.12"
 thiserror = "1"
 base64 = "0.22"
+log = "0.4"
+env_logger = "0.11"
 
 

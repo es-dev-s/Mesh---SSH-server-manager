@@ -34,6 +34,22 @@ export type Breadcrumb = {
   remotePath: string | null;
 };
 
+export function shellSingleQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+/** Stable terminal tab id — no spaces or special chars (PM2 names may contain spaces). */
+export function buildTerminalTabId(prefix: "logs" | "terminal", label: string): string {
+  const slug = label
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+  const safeSlug = slug.length > 0 ? slug : "session";
+  return `${prefix}-${safeSlug}-${Date.now()}`;
+}
+
 export function pm2StatusToServerStatus(status: string): ServerStatus {
   return status === "online" ? "live" : "offline";
 }

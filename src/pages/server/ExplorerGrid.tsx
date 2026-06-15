@@ -6,6 +6,7 @@ import { Terminal, RotateCw } from "lucide-react";
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useServerTabsStore } from "../../stores/useServerTabsStore";
+import { shellSingleQuote, buildTerminalTabId } from "./server-file-system";
 
 export const EXPLORER_CELL_WIDTH = 112;
 export const EXPLORER_ICON_SLOT = 80;
@@ -205,12 +206,12 @@ export function ExplorerGrid({
 
   const handleAction = async (action: "logs" | "restart" | "terminal", node: FileSystemNode) => {
     if (action === "logs") {
-      const termId = `logs-${node.name}-${Date.now()}`;
+      const termId = buildTerminalTabId("logs", node.name);
       addTab({
         type: "terminal",
         id: termId,
         title: `Logs: ${node.name}`,
-        startupCommand: `pm2 logs ${node.name} --lines 100\n`,
+        startupCommand: `pm2 logs ${shellSingleQuote(node.name)} --lines 100\n`,
       });
     } else if (action === "terminal") {
       const isFolder = node.type === "folder";
@@ -220,7 +221,7 @@ export function ExplorerGrid({
         targetPath = lastSlashIndex > 0 ? node.remotePath.substring(0, lastSlashIndex) : "/";
       }
 
-      const termId = `terminal-${node.name}-${Date.now()}`;
+      const termId = buildTerminalTabId("terminal", node.name);
       const escapedPath = targetPath.replace(/"/g, '\\"');
 
       addTab({

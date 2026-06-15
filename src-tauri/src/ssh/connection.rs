@@ -17,10 +17,51 @@ pub enum SshError {
     Connect(String),
     #[error("SSH authentication failed: {0}")]
     Auth(String),
+    /// Remote command returned non-zero, timed out, or produced unexpected output.
+    /// The transport session remains usable.
     #[error("SSH command failed: {0}")]
     Command(String),
+    /// TCP/session/channel failure — the shared connection should be re-established.
+    #[error("SSH transport error: {0}")]
+    Transport(String),
     #[error("SSH key error: {0}")]
     Key(String),
+}
+
+impl SshError {
+    /// True when the shared SSH session is no longer usable and must reconnect.
+    pub fn is_transport_error(&self) -> bool {
+        matches!(self, SshError::Connect(_) | SshError::Transport(_))
+    }
+
+    /// Transient failure opening a new channel (server MaxSessions, momentary load).
+    /// Does not mean the existing TCP/keepalive transport is dead.
+    pub fn is_ephemeral_channel_open_failure(&self) -> bool {
+        match self {
+            SshError::Transport(message) => {
+                let lower = message.to_lowercase();
+                lower.contains("connectfailed")
+                    || lower.contains("failed to open channel")
+                    || lower.contains("maximum")
+                    || lower.contains("too many")
+                    || lower.contains("resource shortage")
+                    || lower.contains("channel failure")
+                    || lower.contains("open refused")
+            }
+            _ => false,
+        }
+    }
+
+    /// Confirmed transport death — not a transient probe channel-open failure.
+    pub fn is_fatal_transport_error(&self) -> bool {
+        match self {
+            SshError::Connect(_) => true,
+            SshError::Transport(_) => {
+                self.is_transport_error() && !self.is_ephemeral_channel_open_failure()
+            }
+            _ => false,
+        }
+    }
 }
 
 pub struct ClientHandler;
@@ -45,7 +86,8 @@ pub struct SshConnection {
 impl SshConnection {
     pub async fn connect(config: &SshConfig) -> Result<Self, SshError> {
         let mut client_config = client::Config::default();
-        client_config.keepalive_interval = Some(Duration::from_secs(30));
+        // Keep the TCP session warm through NAT/firewall idle timeouts.
+        client_config.keepalive_interval = Some(Duration::from_secs(15));
         client_config.keepalive_max = 5;
         let client_config = Arc::new(client_config);
         let handler = ClientHandler;
@@ -96,16 +138,19 @@ impl SshConnection {
     }
 
     async fn exec_inner(&self, command: &str) -> Result<String, SshError> {
-        let session = self.session.lock().await;
-        let mut channel = session
-            .channel_open_session()
-            .await
-            .map_err(|error| SshError::Command(error.to_string()))?;
+        // Hold the session mutex only while opening the channel, not during I/O.
+        let mut channel = {
+            let session = self.session.lock().await;
+            session
+                .channel_open_session()
+                .await
+                .map_err(|error| SshError::Transport(error.to_string()))?
+        };
 
         channel
             .exec(true, command.as_bytes())
             .await
-            .map_err(|error| SshError::Command(error.to_string()))?;
+            .map_err(|error| SshError::Transport(error.to_string()))?;
 
         let mut stdout = String::new();
         let mut stderr = String::new();
@@ -122,7 +167,17 @@ impl SshConnection {
                 Some(ChannelMsg::ExitStatus { exit_status }) => {
                     exit_code = exit_status;
                 }
-                Some(ChannelMsg::Eof) | None => break,
+                Some(ChannelMsg::Eof) => break,
+                Some(ChannelMsg::Close) => {
+                    return Err(SshError::Transport(
+                        "exec channel closed before completion".into(),
+                    ));
+                }
+                None => {
+                    return Err(SshError::Transport(
+                        "exec channel closed unexpectedly".into(),
+                    ));
+                }
                 _ => {}
             }
         }
@@ -142,17 +197,6 @@ impl SshConnection {
         Ok(stdout.trim().to_string())
     }
 
-    pub async fn health_check(&self) -> Result<(), SshError> {
-        let response = self.exec("echo mesh-health-ok").await?;
-        if response == "mesh-health-ok" {
-            Ok(())
-        } else {
-            Err(SshError::Command(format!(
-                "unexpected health check response: {response}"
-            )))
-        }
-    }
-
     pub async fn disconnect(&self) {
         let session = self.session.lock().await;
         let _ = session
@@ -161,11 +205,17 @@ impl SshConnection {
     }
 
     pub async fn open_channel(&self) -> Result<russh::Channel<russh::client::Msg>, SshError> {
-        let session = self.session.lock().await;
-        session
-            .channel_open_session()
-            .await
-            .map_err(|error| SshError::Command(error.to_string()))
+        log::debug!("channel_open_session: waiting for session mutex");
+        let channel = {
+            let session = self.session.lock().await;
+            log::debug!("channel_open_session: acquired session mutex");
+            session
+                .channel_open_session()
+                .await
+                .map_err(|error| SshError::Transport(error.to_string()))?
+        };
+        log::info!("channel_open_session: success");
+        Ok(channel)
     }
 }
 

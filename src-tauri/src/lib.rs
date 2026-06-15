@@ -26,7 +26,8 @@ async fn restart_pm2_process(
     service: tauri::State<'_, Arc<SshService>>,
 ) -> Result<String, String> {
     let path_export = r#"export PATH="$HOME/.local/share/fnm/aliases/default/bin:$HOME/.nvm/versions/node/$(ls $HOME/.nvm/versions/node 2>/dev/null | sort -V | tail -1)/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin:$PATH";"#;
-    let cmd = format!("sh -lc '{} pm2 restart {}'", path_export, name);
+    let quoted_name = shell_single_quote(&name);
+    let cmd = format!("sh -lc '{path_export} pm2 restart {quoted_name}'");
 
     service
         .session
@@ -35,6 +36,10 @@ async fn restart_pm2_process(
         })
         .await
         .map_err(|err| err.to_string())
+}
+
+fn shell_single_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -46,8 +51,12 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(ssh_service.clone())
-        .manage(ssh::terminal::TerminalRegistry::default())
+        .manage(std::sync::Arc::new(ssh::terminal::TerminalRegistry::default()))
         .setup(move |app| {
+            let _ = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+                .format_timestamp_millis()
+                .try_init();
+
             let handle = app.handle().clone();
             let monitor = ssh_service.clone();
 
@@ -65,6 +74,8 @@ pub fn run() {
             ssh::terminal::write_terminal_input,
             ssh::terminal::resize_terminal_session,
             ssh::terminal::close_terminal_session,
+            ssh::terminal::list_terminal_sessions,
+            ssh::terminal::sync_terminal_sessions,
             ssh::editor::read_remote_file,
             ssh::editor::write_remote_file,
         ])

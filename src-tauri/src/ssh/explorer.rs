@@ -15,6 +15,31 @@ pub enum ExplorerError {
     Parse(String),
 }
 
+impl ExplorerError {
+    pub fn is_transport_error(&self) -> bool {
+        match self {
+            ExplorerError::Ssh(error) => error.is_transport_error(),
+            ExplorerError::SessionExpired => true,
+            ExplorerError::InvalidPath(_) | ExplorerError::Parse(_) => false,
+        }
+    }
+
+    pub fn is_probe_channel_failure(&self) -> bool {
+        match self {
+            ExplorerError::Ssh(error) => error.is_ephemeral_channel_open_failure(),
+            _ => false,
+        }
+    }
+
+    pub fn is_fatal_transport_error(&self) -> bool {
+        match self {
+            ExplorerError::Ssh(error) => error.is_fatal_transport_error(),
+            ExplorerError::SessionExpired => true,
+            ExplorerError::InvalidPath(_) | ExplorerError::Parse(_) => false,
+        }
+    }
+}
+
 pub async fn list_directory(
     connection: &SshConnection,
     path: &str,

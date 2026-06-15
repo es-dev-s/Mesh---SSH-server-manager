@@ -14,6 +14,7 @@ pub struct SshConfig {
     pub key_passphrase: Option<String>,
     pub health_interval_secs: u64,
     pub stats_interval_secs: u64,
+    pub probe_failure_threshold: u32,
     pub initial_retry_ms: u64,
     pub max_retry_ms: u64,
     pub connect_timeout_secs: u64,
@@ -76,9 +77,10 @@ pub fn load_ssh_config() -> Result<SshConfig, ConfigError> {
         password,
         key_path,
         key_passphrase: env::var("SSH_KEY_PASSPHRASE").ok(),
-        health_interval_secs: parse_u64("SSH_HEALTH_INTERVAL_SECS", 10),
+        health_interval_secs: parse_u64("SSH_HEALTH_INTERVAL_SECS", 30),
         stats_interval_secs: parse_u64("SSH_STATS_INTERVAL_SECS", 15),
-        initial_retry_ms: parse_u64("SSH_INITIAL_RETRY_MS", 2_000),
+        probe_failure_threshold: parse_u32("SSH_PROBE_FAILURE_THRESHOLD", 3),
+        initial_retry_ms: parse_u64("SSH_INITIAL_RETRY_MS", 1_000),
         max_retry_ms: parse_u64("SSH_MAX_RETRY_MS", 30_000),
         connect_timeout_secs: parse_u64("SSH_CONNECT_TIMEOUT_SECS", 15),
         exec_timeout_secs: parse_u64("SSH_EXEC_TIMEOUT_SECS", 45),
@@ -90,6 +92,13 @@ fn required_var(name: &'static str) -> Result<String, ConfigError> {
 }
 
 fn parse_u64(name: &str, default: u64) -> u64 {
+    env::var(name)
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(default)
+}
+
+fn parse_u32(name: &str, default: u32) -> u32 {
     env::var(name)
         .ok()
         .and_then(|value| value.parse().ok())

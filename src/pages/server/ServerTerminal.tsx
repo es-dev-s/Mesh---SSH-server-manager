@@ -8,18 +8,40 @@ import "xterm/css/xterm.css";
 interface ServerTerminalProps {
   id: string;
   startupCommand?: string;
+  isActive?: boolean;
 }
 
-export function ServerTerminal({ id, startupCommand }: ServerTerminalProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const terminalRef = useRef<Terminal | null>(null);
-  const fitAddonRef = useRef<FitAddon | null>(null);
+function saneDimension(value: number | undefined, fallback: number): number {
+  if (value === undefined || !Number.isFinite(value) || value < 1) {
+    return fallback;
+  }
+  return value;
+}
+
+export function ServerTerminal({
+  id,
+  startupCommand,
+  isActive = true,
+}: ServerTerminalProps) {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const terminalRef = useRef<Terminal | null>(null);
+    const fitAddonRef = useRef<FitAddon | null>(null);
+    const spawnGenerationRef = useRef<number | null>(null);
+    const isActiveRef = useRef(isActive);
   const [isReady, setIsReady] = useState(false);
+  const startupCommandRef = useRef(startupCommand);
+
+  useEffect(() => {
+    startupCommandRef.current = startupCommand;
+  }, [startupCommand]);
+
+  useEffect(() => {
+    isActiveRef.current = isActive;
+  }, [isActive]);
 
   useEffect(() => {
     if (!containerRef.current) return;
 
-    // 1. Create and configure xterm terminal
     const terminal = new Terminal({
       cursorBlink: true,
       cursorStyle: "bar",
@@ -62,27 +84,49 @@ export function ServerTerminal({ id, startupCommand }: ServerTerminalProps) {
 
     let cleanupListeners: (() => void) | undefined;
 
-    // 2. Initialize the backend PTY session
+    const applyFit = () => {
+      if (!fitAddonRef.current || !terminalRef.current || !isActiveRef.current) {
+        return;
+      }
+      try {
+        fitAddonRef.current.fit();
+        const dimensions = fitAddonRef.current.proposeDimensions();
+        const cols = saneDimension(dimensions?.cols, 80);
+        const rows = saneDimension(dimensions?.rows, 24);
+        void invoke("resize_terminal_session", { id, cols, rows });
+      } catch {
+        // Ignore resize errors before backend is ready.
+      }
+    };
+
     const initSession = async () => {
       const dimensions = fitAddon.proposeDimensions();
-      const cols = dimensions ? dimensions.cols : 80;
-      const rows = dimensions ? dimensions.rows : 24;
+      const cols = saneDimension(dimensions?.cols, 80);
+      const rows = saneDimension(dimensions?.rows, 24);
 
       try {
-        // Create terminal session in backend
-        await invoke("create_terminal_session", { id, cols, rows });
+        const spawnGeneration = await invoke<number>("create_terminal_session", {
+          id,
+          cols,
+          rows,
+        });
+        spawnGenerationRef.current = spawnGeneration;
 
-        // Listen for output from the backend
         const unlistenData = await listen<string>(`terminal-data:${id}`, (event) => {
           terminal.write(event.payload);
         });
 
-        // Listen for close event
         const unlistenClose = await listen<void>(`terminal-closed:${id}`, () => {
           terminal.write("\r\n[SSH Connection Closed]\r\n");
         });
 
-        // Pipe user input to the backend
+        const unlistenReconnect = await listen<void>(
+          `terminal-reconnecting:${id}`,
+          () => {
+            terminal.write("\r\n[Reconnecting terminal…]\r\n");
+          },
+        );
+
         const onDataDisposable = terminal.onData((data) => {
           void invoke("write_terminal_input", { id, input: data });
         });
@@ -90,16 +134,20 @@ export function ServerTerminal({ id, startupCommand }: ServerTerminalProps) {
         cleanupListeners = () => {
           unlistenData();
           unlistenClose();
+          unlistenReconnect();
           onDataDisposable.dispose();
-          void invoke("close_terminal_session", { id });
+          void invoke("close_terminal_session", {
+            id,
+            spawnGeneration: spawnGenerationRef.current ?? undefined,
+          });
         };
 
         setIsReady(true);
 
-        if (startupCommand) {
-          // Send startup command with a small delay to let interactive shell initialize
+        const command = startupCommandRef.current;
+        if (command) {
           setTimeout(() => {
-            void invoke("write_terminal_input", { id, input: startupCommand });
+            void invoke("write_terminal_input", { id, input: command });
           }, 200);
         }
       } catch (err) {
@@ -110,27 +158,14 @@ export function ServerTerminal({ id, startupCommand }: ServerTerminalProps) {
 
     void initSession();
 
-    // 3. Handle terminal resizing
     const resizeObserver = new ResizeObserver(() => {
-      if (!fitAddonRef.current || !terminalRef.current) return;
-      try {
-        fitAddonRef.current.fit();
-        const dimensions = fitAddonRef.current.proposeDimensions();
-        if (dimensions) {
-          void invoke("resize_terminal_session", {
-            id,
-            cols: dimensions.cols,
-            rows: dimensions.rows,
-          });
-        }
-      } catch (e) {
-        // Ignore resize errors before backend is ready
-      }
+      applyFit();
     });
     resizeObserver.observe(containerRef.current);
 
-    // Focus terminal on mount
-    terminal.focus();
+    if (isActiveRef.current) {
+      terminal.focus();
+    }
 
     return () => {
       resizeObserver.disconnect();
@@ -140,6 +175,23 @@ export function ServerTerminal({ id, startupCommand }: ServerTerminalProps) {
       terminal.dispose();
     };
   }, [id]);
+
+  useEffect(() => {
+    if (!isActive || !fitAddonRef.current || !terminalRef.current) {
+      return;
+    }
+
+    try {
+      fitAddonRef.current.fit();
+      const dimensions = fitAddonRef.current.proposeDimensions();
+      const cols = saneDimension(dimensions?.cols, 80);
+      const rows = saneDimension(dimensions?.rows, 24);
+      void invoke("resize_terminal_session", { id, cols, rows });
+      terminalRef.current.focus();
+    } catch {
+      // Ignore resize errors before backend is ready.
+    }
+  }, [id, isActive]);
 
   return (
     <div className="relative h-full w-full bg-[#0c0c0d] p-3 rounded-lg border border-white/[0.04]">
