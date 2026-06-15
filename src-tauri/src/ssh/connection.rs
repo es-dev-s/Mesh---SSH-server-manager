@@ -23,7 +23,7 @@ pub enum SshError {
     Key(String),
 }
 
-struct ClientHandler;
+pub struct ClientHandler;
 
 #[async_trait]
 impl Handler for ClientHandler {
@@ -158,6 +158,14 @@ impl SshConnection {
         let _ = session
             .disconnect(Disconnect::ByApplication, "", "English")
             .await;
+    }
+
+    pub async fn open_channel(&self) -> Result<russh::Channel<russh::client::Msg>, SshError> {
+        let session = self.session.lock().await;
+        session
+            .channel_open_session()
+            .await
+            .map_err(|error| SshError::Command(error.to_string()))
     }
 }
 

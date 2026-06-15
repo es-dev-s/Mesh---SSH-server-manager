@@ -1,9 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { createRequestSequencer } from "../../lib/sync";
 import { useSshStore } from "../../hooks/useSshMonitor";
 import type { RemoteEntry, SshSnapshot } from "../../types/ssh";
+import { useExplorerStore } from "../../stores/useExplorerStore";
 import {
   buildPm2RootFolders,
   getBreadcrumbs,
@@ -12,7 +12,6 @@ import {
   type PathSegment,
 } from "./server-file-system";
 
-const SSH_STATUS_EVENT = "ssh://status";
 const DIRECTORY_REFRESH_MS = 15_000;
 
 function isSessionExpiredMessage(message: string): boolean {
@@ -21,15 +20,21 @@ function isSessionExpiredMessage(message: string): boolean {
 
 export function useServerExplorer() {
   const snapshot = useSshStore((state) => state.snapshot);
-  const [pathStack, setPathStack] = useState<PathSegment[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [items, setItems] = useState<FileSystemNode[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    pathStack,
+    selectedId,
+    items,
+    loading,
+    error,
+    setPathStack,
+    setSelectedId,
+    setItems,
+    setLoading,
+    setError,
+  } = useExplorerStore();
 
   const requestSequencer = useRef(createRequestSequencer());
   const sessionIdRef = useRef(snapshot.sessionId);
-  const revisionRef = useRef(snapshot.revision);
   const pathStackRef = useRef<PathSegment[]>(pathStack);
 
   useEffect(() => {
@@ -99,6 +104,7 @@ export function useServerExplorer() {
     }
   }, []);
 
+  // 1. Reset state on session ID change
   useEffect(() => {
     if (snapshot.sessionId !== sessionIdRef.current) {
       sessionIdRef.current = snapshot.sessionId;
@@ -108,6 +114,7 @@ export function useServerExplorer() {
     }
   }, [snapshot.sessionId]);
 
+  // 2. Handle connection status and Root View (PM2 processes list) updates
   useEffect(() => {
     if (!isConnected) {
       requestSequencer.current.cancel();
@@ -120,88 +127,26 @@ export function useServerExplorer() {
     if (isRootView) {
       setLoading(false);
       applyRootView(snapshot);
-      return;
     }
+  }, [isConnected, isRootView, applyRootView, snapshot]);
 
-    if (!currentRemotePath) {
+  // 3. Load directory when navigating to a new path
+  useEffect(() => {
+    if (!isConnected || isRootView || !currentRemotePath) {
       return;
     }
 
     void loadDirectory(currentRemotePath);
-  }, [
-    applyRootView,
-    currentRemotePath,
-    isConnected,
-    isRootView,
-    loadDirectory,
-    snapshot,
-  ]);
+  }, [isConnected, isRootView, currentRemotePath, loadDirectory]);
 
+  // 4. Periodically refresh directory while browsing it
   useEffect(() => {
-    if (snapshot.revision === revisionRef.current) {
-      return;
-    }
-
-    revisionRef.current = snapshot.revision;
-
     if (!isConnected) {
       return;
     }
 
-    if (isRootView) {
-      applyRootView(snapshot);
-      return;
-    }
-
-    if (currentRemotePath) {
-      void loadDirectory(currentRemotePath);
-    }
-  }, [
-    applyRootView,
-    currentRemotePath,
-    isConnected,
-    isRootView,
-    loadDirectory,
-    snapshot.revision,
-    snapshot.pm2,
-  ]);
-
-  useEffect(() => {
-    let active = true;
-    let refreshTimer: number | undefined;
-    let disposeListener: (() => void) | undefined;
-
-    void listen<SshSnapshot>(SSH_STATUS_EVENT, (event) => {
-      if (!active || event.payload.revision <= revisionRef.current) {
-        return;
-      }
-
-      revisionRef.current = event.payload.revision;
-
-      if (event.payload.state !== "connected") {
-        return;
-      }
-
-      const stack = pathStackRef.current;
-      if (stack.length === 0) {
-        applyRootView(event.payload);
-        return;
-      }
-
-      const remotePath = stack[stack.length - 1]?.remotePath;
-      if (remotePath) {
-        void loadDirectory(remotePath);
-      }
-    }).then((unlisten) => {
-      if (!active) {
-        unlisten();
-        return;
-      }
-      disposeListener = unlisten;
-    });
-
-    refreshTimer = window.setInterval(() => {
-      if (!isConnected || pathStackRef.current.length === 0) {
+    const refreshTimer = window.setInterval(() => {
+      if (pathStackRef.current.length === 0) {
         return;
       }
 
@@ -213,13 +158,9 @@ export function useServerExplorer() {
     }, DIRECTORY_REFRESH_MS);
 
     return () => {
-      active = false;
-      disposeListener?.();
-      if (refreshTimer) {
-        window.clearInterval(refreshTimer);
-      }
+      window.clearInterval(refreshTimer);
     };
-  }, [applyRootView, isConnected, loadDirectory]);
+  }, [isConnected, loadDirectory]);
 
   const openFolder = useCallback((node: FileSystemNode) => {
     if (node.type !== "folder") {

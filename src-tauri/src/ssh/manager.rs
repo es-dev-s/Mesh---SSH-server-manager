@@ -16,7 +16,7 @@ use super::types::{ConnectionState, RemoteEntry, SshSnapshot};
 pub struct SshService {
     config: Option<SshConfig>,
     snapshot: Arc<RwLock<SshSnapshot>>,
-    session: Arc<SessionController>,
+    pub session: Arc<SessionController>,
 }
 
 impl SshService {
@@ -40,6 +40,17 @@ impl SshService {
                 explorer::list_directory(&connection, path)
                     .await
                     .map_err(SessionError::Explorer)
+            })
+            .await
+    }
+
+    pub async fn open_session_channel(&self) -> Result<russh::Channel<russh::client::Msg>, SessionError> {
+        self.session
+            .with_connection(|connection| async move {
+                connection
+                    .open_channel()
+                    .await
+                    .map_err(SessionError::Command)
             })
             .await
     }

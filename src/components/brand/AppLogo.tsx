@@ -39,7 +39,7 @@ export function AppLogo({
 
       {showWordmark && (
         <div className="min-w-0">
-          <p className="truncate text-[13px] leading-tight font-semibold text-neutral-900">
+          <p className="truncate text-[13px] leading-tight font-semibold text-[#f8f9fa]">
             {APP_NAME}
           </p>
           <p className="truncate text-[10px] leading-tight text-neutral-400">

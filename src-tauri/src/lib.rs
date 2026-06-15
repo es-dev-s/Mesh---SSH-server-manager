@@ -20,6 +20,23 @@ async fn list_remote_directory(
         .map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+async fn restart_pm2_process(
+    name: String,
+    service: tauri::State<'_, Arc<SshService>>,
+) -> Result<String, String> {
+    let path_export = r#"export PATH="$HOME/.local/share/fnm/aliases/default/bin:$HOME/.nvm/versions/node/$(ls $HOME/.nvm/versions/node 2>/dev/null | sort -V | tail -1)/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin:$PATH";"#;
+    let cmd = format!("sh -lc '{} pm2 restart {}'", path_export, name);
+
+    service
+        .session
+        .with_connection(|connection| async move {
+            connection.exec(&cmd).await.map_err(ssh::session::SessionError::Command)
+        })
+        .await
+        .map_err(|err| err.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let mut ssh_service = SshService::new();
@@ -29,6 +46,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(ssh_service.clone())
+        .manage(ssh::terminal::TerminalRegistry::default())
         .setup(move |app| {
             let handle = app.handle().clone();
             let monitor = ssh_service.clone();
@@ -39,7 +57,17 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_ssh_status, list_remote_directory])
+        .invoke_handler(tauri::generate_handler![
+            get_ssh_status,
+            list_remote_directory,
+            restart_pm2_process,
+            ssh::terminal::create_terminal_session,
+            ssh::terminal::write_terminal_input,
+            ssh::terminal::resize_terminal_session,
+            ssh::terminal::close_terminal_session,
+            ssh::editor::read_remote_file,
+            ssh::editor::write_remote_file,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

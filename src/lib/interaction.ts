@@ -7,52 +7,52 @@ const transition = [
 ].join(" ");
 
 const focusRing =
-  "outline-none focus-visible:ring-2 focus-visible:ring-[#007AFF]/40 focus-visible:ring-offset-0";
+  "outline-none focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-0";
 
 export const chromeButtonClass = [
   "flex items-center justify-center rounded-[8px]",
   transition,
   "text-neutral-400",
-  "hover:bg-black/[0.04] hover:text-neutral-600",
-  "active:bg-black/[0.07]",
+  "hover:bg-white/[0.06] hover:text-neutral-200",
+  "active:bg-white/[0.1]",
   focusRing,
 ].join(" ");
 
 export const chromeButtonActiveClass = [
   "flex items-center justify-center rounded-[8px]",
   transition,
-  "bg-black/[0.05] text-neutral-700",
+  "bg-white/[0.1] text-white",
   focusRing,
 ].join(" ");
 
 export const railButtonClass = [
   "relative flex w-full items-center justify-center rounded-[10px]",
   transition,
-  "text-neutral-500",
-  "hover:bg-black/[0.035] hover:text-neutral-600",
-  "active:bg-black/[0.06]",
+  "text-neutral-400",
+  "hover:bg-white/[0.05] hover:text-neutral-200",
+  "active:bg-white/[0.08]",
   focusRing,
 ].join(" ");
 
 export const railButtonActiveClass = [
   "relative flex w-full items-center justify-center rounded-[10px]",
   transition,
-  "bg-black/[0.05] text-[#007AFF]",
+  "bg-white/[0.08] text-white border border-white/[0.05] shadow-[0_1px_3px_rgba(0,0,0,0.2)]",
   focusRing,
 ].join(" ");
 
 export const panelButtonClass = [
   "relative flex w-full items-center rounded-[10px] text-left text-[13px] font-medium",
   transition,
-  "text-neutral-600",
-  "hover:bg-black/[0.035] hover:text-neutral-800",
-  "active:bg-black/[0.06]",
+  "text-neutral-400",
+  "hover:bg-white/[0.04] hover:text-white",
+  "active:bg-white/[0.08]",
   focusRing,
 ].join(" ");
 
 export const panelButtonActiveClass = [
   "relative flex w-full items-center rounded-[10px] text-left text-[13px] font-medium",
   transition,
-  "bg-black/[0.05] text-neutral-900",
+  "bg-white/[0.08] text-white border border-white/[0.05] shadow-[0_1px_2px_rgba(0,0,0,0.15)]",
   focusRing,
 ].join(" ");

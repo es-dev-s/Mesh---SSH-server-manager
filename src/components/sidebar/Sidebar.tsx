@@ -1,14 +1,9 @@
 import type { CSSProperties } from "react";
-import { AppLogo } from "../brand/AppLogo";
-import { APP_TAGLINE } from "../../lib/brand";
 import {
-  PANEL_ITEM_PADDING_X,
-  PANEL_PADDING_X,
   RAIL_ITEM_GAP,
   RAIL_PADDING_X,
   SIDEBAR_PANEL_WIDTH,
   SIDEBAR_RAIL_WIDTH,
-  TITLE_BAR_HEIGHT,
 } from "../../lib/layout";
 import { useNavigationStore } from "../../stores/useNavigationStore";
 import { useSidebarStore } from "../../stores/useSidebarStore";
@@ -22,19 +17,12 @@ function SidebarRail() {
   return (
     <nav
       aria-label="Primary"
-      style={{ paddingLeft: RAIL_PADDING_X, paddingRight: RAIL_PADDING_X }}
-      className="flex h-full w-[var(--sidebar-rail-width)] shrink-0 flex-col border-r border-black/[0.06] bg-[#f8f8fa]"
+      style={{ paddingLeft: RAIL_PADDING_X, paddingRight: RAIL_PADDING_X, paddingTop: 12 }}
+      className="flex h-full w-[var(--sidebar-rail-width)] shrink-0 flex-col border-r border-white/[0.06] bg-[#181818]/90 backdrop-blur-xl"
     >
       <div
-        style={{ height: TITLE_BAR_HEIGHT }}
-        className="flex shrink-0 items-center justify-center"
-      >
-        <AppLogo size="sm" />
-      </div>
-
-      <div
         className="flex flex-col"
-        style={{ gap: RAIL_ITEM_GAP, paddingTop: 6, paddingBottom: 6 }}
+        style={{ gap: RAIL_ITEM_GAP }}
       >
         {sidebarNavItems.map((item) => (
           <RailNavItem
@@ -59,26 +47,18 @@ function SidebarPanel() {
       data-sidebar-panel
       aria-hidden={!isExpanded}
       style={{ width: isExpanded ? SIDEBAR_PANEL_WIDTH : 0 }}
-      className="absolute top-0 bottom-0 left-[var(--sidebar-rail-width)] z-30 overflow-hidden border-r border-black/[0.06] bg-[#fbfbfc]/95 shadow-[6px_0_24px_-10px_rgba(0,0,0,0.1)] backdrop-blur-xl transition-[width] duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)]"
+      className={[
+        "absolute top-0 bottom-0 left-[var(--sidebar-rail-width)] z-30 overflow-hidden bg-[#1c1c1e]/95 shadow-[6px_0_24px_-10px_rgba(0,0,0,0.3)] backdrop-blur-xl transition-[width] duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)]",
+        isExpanded ? "border-r border-white/[0.06]" : "",
+      ].join(" ")}
     >
       <div
-        style={{ width: SIDEBAR_PANEL_WIDTH }}
+        style={{ width: SIDEBAR_PANEL_WIDTH, paddingTop: 16 }}
         className="flex h-full flex-col"
       >
         <div
-          style={{
-            height: TITLE_BAR_HEIGHT,
-            paddingLeft: PANEL_PADDING_X + PANEL_ITEM_PADDING_X,
-            paddingRight: PANEL_PADDING_X,
-          }}
-          className="flex shrink-0 items-center border-b border-black/[0.04]"
-        >
-          <AppLogo size="md" showWordmark subtitle={APP_TAGLINE} />
-        </div>
-
-        <div
           className="flex flex-col pb-3"
-          style={{ gap: RAIL_ITEM_GAP, paddingTop: 6 }}
+          style={{ gap: RAIL_ITEM_GAP }}
         >
           {sidebarNavItems.map((item) => (
             <PanelNavItem

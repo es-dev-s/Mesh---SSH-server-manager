@@ -1,9 +1,8 @@
-import { useSshMonitor, useSshStore } from "../../hooks/useSshMonitor";
+import { useSshStore } from "../../hooks/useSshMonitor";
 import { ConnectionPanel, ConnectionStatusBadge } from "./ConnectionStatusBadge";
 import { DashboardPlaceholder, DeviceDashboard } from "./DeviceDashboard";
 
 export function HomePage() {
-  useSshMonitor();
   const snapshot = useSshStore((state) => state.snapshot);
   const endpoint = `${snapshot.user}@${snapshot.host}:${snapshot.port}`;
   const hasMetrics = snapshot.specs && snapshot.storage;
@@ -13,13 +12,13 @@ export function HomePage() {
     <div className="flex h-full flex-col overflow-y-auto px-8 py-7">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-[11px] font-semibold tracking-[0.08em] text-[#007AFF] uppercase">
+          <p className="text-[10px] font-semibold tracking-[0.08em] text-white/40 uppercase">
             Dashboard
           </p>
-          <h2 className="mt-1 text-[24px] font-semibold tracking-tight text-neutral-900">
+          <h2 className="mt-1 text-[24px] font-semibold tracking-tight text-[#f8f9fa]">
             {snapshot.name}
           </h2>
-          <p className="mt-1 text-[13px] text-neutral-500">{endpoint}</p>
+          <p className="mt-1 text-[13px] text-neutral-400">{endpoint}</p>
         </div>
 
         <ConnectionStatusBadge state={snapshot.state} />
