@@ -12,13 +12,16 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "Mesh",
-        "width": 1024,
-        "height": 680,
-        "minWidth": 800,
-        "minHeight": 520,
+        "width": 1280,
+        "height": 800,
+        "minWidth": 960,
+        "minHeight": 640,
         "decorations": false,
-        "shadow": true
+        "shadow": true,
+        "visible": true,
+        "center": true
       }
     ],
     "security": {
@@ -28,6 +31,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -35,5 +39,14 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "",
+      "endpoints": [],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

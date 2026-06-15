@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-quit-mesh"
+description = "Allows quitting the Mesh application."
+commands.allow = ["quit_mesh"]

@@ -71,6 +71,33 @@ export function buildPm2RootFolders(processes: Pm2Process[]): FolderNode[] {
     }));
 }
 
+export function buildRootShortcuts(homePath: string): FolderNode[] {
+  const normalizedHome = homePath.replace(/\/+$/, "");
+  return [
+    {
+      type: "folder",
+      id: "shortcut-home",
+      name: "Home",
+      remotePath: normalizedHome,
+      subtitle: normalizedHome,
+    },
+    {
+      type: "folder",
+      id: "shortcut-deployments",
+      name: "Deployments",
+      remotePath: `${normalizedHome}/mesh-deployments`,
+      subtitle: `${normalizedHome}/mesh-deployments`,
+    },
+  ];
+}
+
+export function buildRootViewItems(
+  homePath: string,
+  processes: Pm2Process[],
+): FolderNode[] {
+  return [...buildRootShortcuts(homePath), ...buildPm2RootFolders(processes)];
+}
+
 export function joinRemotePath(base: string, name: string): string {
   const normalized = base.replace(/\/+$/, "");
   return `${normalized}/${name}`;
@@ -102,7 +129,7 @@ export function remoteEntryToNode(
 }
 
 export function getBreadcrumbs(pathStack: PathSegment[]): Breadcrumb[] {
-  const crumbs: Breadcrumb[] = [{ id: null, label: "PM2 Apps", remotePath: null }];
+  const crumbs: Breadcrumb[] = [{ id: null, label: "Server", remotePath: null }];
 
   for (const segment of pathStack) {
     crumbs.push({

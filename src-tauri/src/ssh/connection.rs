@@ -127,12 +127,20 @@ impl SshConnection {
     }
 
     pub async fn exec(&self, command: &str) -> Result<String, SshError> {
-        timeout(self.exec_timeout, self.exec_inner(command))
+        self.exec_with_timeout(command, self.exec_timeout).await
+    }
+
+    pub async fn exec_with_timeout(
+        &self,
+        command: &str,
+        exec_timeout: Duration,
+    ) -> Result<String, SshError> {
+        timeout(exec_timeout, self.exec_inner(command))
             .await
             .map_err(|_| {
                 SshError::Command(format!(
                     "command timed out after {}s",
-                    self.exec_timeout.as_secs()
+                    exec_timeout.as_secs()
                 ))
             })?
     }

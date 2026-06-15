@@ -1,0 +1,11 @@
+[[permission]]
+identifier = "allow-mesh-island-commands"
+description = "Allows Mesh island-window invoke commands."
+commands.allow = [
+  "get_ssh_status",
+  "show_main_window",
+  "quit_mesh",
+  "reposition_island",
+  "apply_island_dock",
+  "pin_island"
+]

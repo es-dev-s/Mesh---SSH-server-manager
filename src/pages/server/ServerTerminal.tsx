@@ -1,9 +1,14 @@
-import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useRef, useState } from "react";
 import { Terminal } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
 import "xterm/css/xterm.css";
+import {
+  closeTerminalSession,
+  createTerminalSession,
+} from "./terminal-session";
+import { attachTerminalClipboard } from "./terminal-clipboard";
+import { invoke } from "@tauri-apps/api/core";
 
 interface ServerTerminalProps {
   id: string;
@@ -23,11 +28,11 @@ export function ServerTerminal({
   startupCommand,
   isActive = true,
 }: ServerTerminalProps) {
-    const containerRef = useRef<HTMLDivElement>(null);
-    const terminalRef = useRef<Terminal | null>(null);
-    const fitAddonRef = useRef<FitAddon | null>(null);
-    const spawnGenerationRef = useRef<number | null>(null);
-    const isActiveRef = useRef(isActive);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const terminalRef = useRef<Terminal | null>(null);
+  const fitAddonRef = useRef<FitAddon | null>(null);
+  const spawnGenerationRef = useRef<number | null>(null);
+  const isActiveRef = useRef(isActive);
   const [isReady, setIsReady] = useState(false);
   const startupCommandRef = useRef(startupCommand);
 
@@ -41,6 +46,8 @@ export function ServerTerminal({
 
   useEffect(() => {
     if (!containerRef.current) return;
+
+    let disposed = false;
 
     const terminal = new Terminal({
       cursorBlink: true,
@@ -71,6 +78,7 @@ export function ServerTerminal({
       fontSize: 13,
       lineHeight: 1.25,
       allowProposedApi: true,
+      rightClickSelectsWord: true,
     });
 
     const fitAddon = new FitAddon();
@@ -105,16 +113,25 @@ export function ServerTerminal({
       const rows = saneDimension(dimensions?.rows, 24);
 
       try {
-        const spawnGeneration = await invoke<number>("create_terminal_session", {
-          id,
-          cols,
-          rows,
-        });
+        const spawnGeneration = await createTerminalSession(id, cols, rows);
+        if (disposed) {
+          await closeTerminalSession(id, spawnGeneration);
+          return;
+        }
+
         spawnGenerationRef.current = spawnGeneration;
 
         const unlistenData = await listen<string>(`terminal-data:${id}`, (event) => {
-          terminal.write(event.payload);
+          if (!disposed) {
+            terminal.write(event.payload);
+          }
         });
+
+        if (disposed) {
+          unlistenData();
+          await closeTerminalSession(id, spawnGeneration);
+          return;
+        }
 
         const unlistenClose = await listen<void>(`terminal-closed:${id}`, () => {
           terminal.write("\r\n[SSH Connection Closed]\r\n");
@@ -131,15 +148,16 @@ export function ServerTerminal({
           void invoke("write_terminal_input", { id, input: data });
         });
 
+        attachTerminalClipboard(terminal, (data) => {
+          void invoke("write_terminal_input", { id, input: data });
+        });
+
         cleanupListeners = () => {
           unlistenData();
           unlistenClose();
           unlistenReconnect();
           onDataDisposable.dispose();
-          void invoke("close_terminal_session", {
-            id,
-            spawnGeneration: spawnGenerationRef.current ?? undefined,
-          });
+          void closeTerminalSession(id, spawnGenerationRef.current ?? undefined);
         };
 
         setIsReady(true);
@@ -151,8 +169,10 @@ export function ServerTerminal({
           }, 200);
         }
       } catch (err) {
-        terminal.write(`\r\nError starting SSH session: ${err}\r\n`);
-        setIsReady(true);
+        if (!disposed) {
+          terminal.write(`\r\nError starting SSH session: ${err}\r\n`);
+          setIsReady(true);
+        }
       }
     };
 
@@ -168,9 +188,12 @@ export function ServerTerminal({
     }
 
     return () => {
+      disposed = true;
       resizeObserver.disconnect();
       if (cleanupListeners) {
         cleanupListeners();
+      } else if (spawnGenerationRef.current !== null) {
+        void closeTerminalSession(id, spawnGenerationRef.current);
       }
       terminal.dispose();
     };

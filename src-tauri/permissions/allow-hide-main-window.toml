@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-hide-main-window"
+description = "Allows hiding the main Mesh window."
+commands.allow = ["hide_main_window"]

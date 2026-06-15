@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-reposition-island"
+description = "Allows repositioning the island window."
+commands.allow = ["reposition_island"]

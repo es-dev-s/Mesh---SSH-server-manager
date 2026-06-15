@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-show-main-window"
+description = "Allows the island window to show and focus the main Mesh window."
+commands.allow = ["show_main_window"]

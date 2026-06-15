@@ -1,3 +1,4 @@
+import { useUiPersistence } from "../hooks/useUiPersistence";
 import { MainContent } from "./MainContent";
 import { Sidebar } from "./sidebar/Sidebar";
 import { TitleBar } from "./TitleBar";
@@ -5,7 +6,8 @@ import { useSidebarStore } from "../stores/useSidebarStore";
 import { useSshMonitor } from "../hooks/useSshMonitor";
 
 export function AppShell() {
-  useSshMonitor(); // Globally run connection monitoring at root
+  useSshMonitor();
+  useUiPersistence();
   const isExpanded = useSidebarStore((state) => state.isExpanded);
   const collapse = useSidebarStore((state) => state.collapse);
 

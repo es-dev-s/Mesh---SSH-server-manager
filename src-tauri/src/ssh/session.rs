@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU32, Ordering};
 use std::sync::Arc;
 
 use parking_lot::RwLock;
@@ -43,6 +43,8 @@ pub struct SessionController {
     pty_sessions: Mutex<HashMap<String, PtyRegistration>>,
     /// Consecutive transient probe/exec channel-open failures (reset on any successful I/O).
     probe_failure_streak: AtomicU32,
+    /// Set when channel pool appears exhausted; monitor recycles transport when no PTYs remain.
+    transport_recover_pending: AtomicBool,
 }
 
 impl SessionController {
@@ -57,7 +59,16 @@ impl SessionController {
             session_watch,
             pty_sessions: Mutex::new(HashMap::new()),
             probe_failure_streak: AtomicU32::new(0),
+            transport_recover_pending: AtomicBool::new(false),
         }
+    }
+
+    pub fn signal_transport_recover(&self) {
+        self.transport_recover_pending.store(true, Ordering::SeqCst);
+    }
+
+    pub fn take_transport_recover(&self) -> bool {
+        self.transport_recover_pending.swap(false, Ordering::SeqCst)
     }
 
     pub fn reset_probe_failure_streak(&self) {

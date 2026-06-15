@@ -5,9 +5,11 @@ import type { FileSystemNode } from "./server-file-system";
 import { useServerTabsStore } from "../../stores/useServerTabsStore";
 import { ServerTerminal } from "./ServerTerminal";
 import { ServerEditor } from "./ServerEditor";
-import { Folder, Terminal, FileCode, X, Plus } from "lucide-react";
+import { FolderPickerDialog } from "../../components/ui/FolderPickerDialog";
+import { NameDialog } from "../../components/ui/NameDialog";
+import { Folder, Terminal, FileCode, X, Plus, FolderPlus, FilePlus, FolderInput } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export function ServerPage() {
   const {
@@ -19,7 +21,15 @@ export function ServerPage() {
     error,
     isRootView,
     isConnected,
+    currentRemotePath,
+    homePath,
+    createFolder,
+    createFile,
+    goToPath,
   } = useServerExplorer();
+
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<"folder" | "file" | "picker" | null>(null);
 
   const { tabs, activeTabIndex, addTab, closeTab, setActiveTabIndex } = useServerTabsStore();
 
@@ -60,9 +70,10 @@ export function ServerPage() {
     });
   };
 
+  const createParentLabel = currentRemotePath ?? homePath;
+
   return (
     <div className="flex h-full flex-col bg-[#111111]">
-      {/* VS Code style Tab Bar */}
       <div className="flex h-[36px] items-center justify-between border-b border-white/[0.06] bg-[#161617]/95 px-4 select-none">
         <div className="flex h-full items-end gap-0.5 overflow-x-auto scrollbar-none">
           {tabs.map((tab, idx) => {
@@ -125,7 +136,6 @@ export function ServerPage() {
         </button>
       </div>
 
-      {/* Page Content Panel Router — terminal tabs stay mounted (stacked) so PTY channels are not torn down on tab switch */}
       <div className="relative min-h-0 flex-1 overflow-hidden">
         {activeTab.type === "explorer" && (
           <div
@@ -151,13 +161,55 @@ export function ServerPage() {
                 <p className="mt-2 max-w-md text-[13px] leading-relaxed text-neutral-400">{error}</p>
               </div>
             ) : (
-              <ExplorerGrid
-                items={items}
-                selectedId={selectedId}
-                isRootView={isRootView}
-                onSelect={setSelectedId}
-                onOpen={handleOpen}
-              />
+              <>
+                {isConnected && (
+                  <div className="mb-5 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setDialog("folder")}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-[12px] font-semibold text-neutral-200 hover:bg-white/[0.08]"
+                    >
+                      <FolderPlus className="h-3.5 w-3.5" />
+                      New folder
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDialog("file")}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-[12px] font-semibold text-neutral-200 hover:bg-white/[0.08]"
+                    >
+                      <FilePlus className="h-3.5 w-3.5" />
+                      New file
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDialog("picker")}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-[12px] font-semibold text-neutral-200 hover:bg-white/[0.08]"
+                    >
+                      <FolderInput className="h-3.5 w-3.5" />
+                      Open folder
+                    </button>
+                    {currentRemotePath && (
+                      <code className="ml-auto max-w-[50%] truncate rounded-lg bg-black/30 px-2 py-1 font-mono text-[11px] text-neutral-400">
+                        {currentRemotePath}
+                      </code>
+                    )}
+                  </div>
+                )}
+
+                {createError && (
+                  <div className="mb-4 rounded-xl border border-red-500/20 bg-red-500/[0.08] px-4 py-3 text-[12px] text-red-200">
+                    {createError}
+                  </div>
+                )}
+
+                <ExplorerGrid
+                  items={items}
+                  selectedId={selectedId}
+                  isRootView={isRootView}
+                  onSelect={setSelectedId}
+                  onOpen={handleOpen}
+                />
+              </>
             )}
           </div>
         )}
@@ -188,6 +240,44 @@ export function ServerPage() {
           );
         })}
       </div>
+
+      <NameDialog
+        open={dialog === "folder"}
+        title="New folder"
+        description={`Create a folder in ${createParentLabel}`}
+        label="Folder name"
+        placeholder="my-folder"
+        confirmLabel="Create folder"
+        onClose={() => setDialog(null)}
+        onConfirm={async (name) => {
+          setCreateError(null);
+          await createFolder(name);
+        }}
+      />
+
+      <NameDialog
+        open={dialog === "file"}
+        title="New file"
+        description={`Create a file in ${createParentLabel}`}
+        label="File name"
+        placeholder="config.env"
+        confirmLabel="Create file"
+        onClose={() => setDialog(null)}
+        onConfirm={async (name) => {
+          setCreateError(null);
+          await createFile(name);
+        }}
+      />
+
+      <FolderPickerDialog
+        open={dialog === "picker"}
+        initialPath={currentRemotePath ?? homePath}
+        onClose={() => setDialog(null)}
+        onSelect={async (path) => {
+          setCreateError(null);
+          await goToPath(path);
+        }}
+      />
     </div>
   );
 }

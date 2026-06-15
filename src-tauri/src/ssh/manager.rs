@@ -10,6 +10,8 @@ use super::config::{ConfigError, SshConfig};
 use super::connection::SshConnection;
 use super::explorer;
 use super::pm2::collect_pm2;
+use super::proxy::{self, ProxyError};
+use super::deploy::{self, DeployError};
 use super::session::{SessionController, SessionError};
 use super::types::{ConnectionState, RemoteEntry, SshSnapshot};
 
@@ -34,6 +36,13 @@ impl SshService {
         self.snapshot.read().clone()
     }
 
+    fn dns_ip(&self) -> Result<String, ProxyError> {
+        self.config
+            .as_ref()
+            .map(|config| config.dns_ip.clone())
+            .ok_or_else(|| ProxyError::Operation("SSH is not configured".into()))
+    }
+
     pub async fn list_directory(&self, path: &str) -> Result<Vec<RemoteEntry>, SessionError> {
         let result = self
             .session
@@ -43,6 +52,307 @@ impl SshService {
                     .map_err(SessionError::Explorer)
             })
             .await;
+        if result.is_ok() {
+            self.session.reset_probe_failure_streak();
+        }
+        result
+    }
+
+    pub async fn resolve_remote_home(&self) -> Result<String, SessionError> {
+        let result = self
+            .session
+            .with_connection(|connection| async move {
+                explorer::resolve_home(&connection)
+                    .await
+                    .map_err(SessionError::Explorer)
+            })
+            .await;
+        if result.is_ok() {
+            self.session.reset_probe_failure_streak();
+        }
+        result
+    }
+
+    pub async fn create_remote_directory(&self, path: &str) -> Result<(), SessionError> {
+        let path = path.to_string();
+        let result = self
+            .session
+            .with_connection(|connection| async move {
+                explorer::create_directory(&connection, &path)
+                    .await
+                    .map_err(SessionError::Explorer)
+            })
+            .await;
+        if result.is_ok() {
+            self.session.reset_probe_failure_streak();
+        }
+        result
+    }
+
+    pub async fn create_remote_file(&self, path: &str) -> Result<(), SessionError> {
+        let path = path.to_string();
+        let result = self
+            .session
+            .with_connection(|connection| async move {
+                explorer::create_file(&connection, &path)
+                    .await
+                    .map_err(SessionError::Explorer)
+            })
+            .await;
+        if result.is_ok() {
+            self.session.reset_probe_failure_streak();
+        }
+        result
+    }
+
+    pub async fn list_nginx_proxies(
+        &self,
+    ) -> Result<proxy::NginxProxyOverview, ProxyError> {
+        let dns_ip = self.dns_ip()?;
+        let result = self
+            .session
+            .with_connection(|connection| async move {
+                proxy::collect_overview(&connection, &dns_ip)
+                    .await
+                    .map_err(|error| SessionError::Operation(error.to_string()))
+            })
+            .await
+            .map_err(map_proxy_session_error);
+
+        if result.is_ok() {
+            self.session.reset_probe_failure_streak();
+        }
+        result
+    }
+
+    pub async fn stage_nginx_proxy(
+        &self,
+        domain: &str,
+        port: u16,
+        websocket_enabled: bool,
+    ) -> Result<proxy::StageProxyResult, ProxyError> {
+        let dns_ip = self.dns_ip()?;
+        let domain = domain.to_string();
+        let result = self
+            .session
+            .with_connection(|connection| async move {
+                proxy::stage_proxy(&connection, &dns_ip, &domain, port, websocket_enabled)
+                    .await
+                    .map_err(|error| SessionError::Operation(error.to_string()))
+            })
+            .await
+            .map_err(map_proxy_session_error);
+
+        if result.is_ok() {
+            self.session.reset_probe_failure_streak();
+        }
+        result
+    }
+
+    pub async fn create_nginx_proxy(
+        &self,
+        domain: &str,
+        port: u16,
+        websocket_enabled: bool,
+    ) -> Result<proxy::CreateProxyResult, ProxyError> {
+        let dns_ip = self.dns_ip()?;
+        let domain = domain.to_string();
+        let result = self
+            .session
+            .with_connection(|connection| async move {
+                proxy::create_proxy(&connection, &dns_ip, &domain, port, websocket_enabled)
+                    .await
+                    .map_err(|error| SessionError::Operation(error.to_string()))
+            })
+            .await
+            .map_err(map_proxy_session_error);
+
+        if result.is_ok() {
+            self.session.reset_probe_failure_streak();
+        }
+        result
+    }
+
+    pub async fn check_dns_resolution(
+        &self,
+        domain: &str,
+        expected_ip: &str,
+    ) -> Result<proxy::DnsCheckResult, ProxyError> {
+        let domain = domain.to_string();
+        let expected_ip = expected_ip.to_string();
+        let result = self
+            .session
+            .with_connection(|connection| async move {
+                proxy::check_dns(&connection, &domain, &expected_ip)
+                    .await
+                    .map_err(|error| SessionError::Operation(error.to_string()))
+            })
+            .await
+            .map_err(map_proxy_session_error);
+
+        if result.is_ok() {
+            self.session.reset_probe_failure_streak();
+        }
+        result
+    }
+
+    pub async fn reload_nginx(&self) -> Result<proxy::NginxReloadResult, ProxyError> {
+        let result = self
+            .session
+            .with_connection(|connection| async move {
+                proxy::reload_nginx(&connection)
+                    .await
+                    .map_err(|error| SessionError::Operation(error.to_string()))
+            })
+            .await
+            .map_err(map_proxy_session_error);
+
+        if result.is_ok() {
+            self.session.reset_probe_failure_streak();
+        }
+        result
+    }
+
+    fn server_host(&self) -> Result<String, DeployError> {
+        self.config
+            .as_ref()
+            .map(|config| config.host.clone())
+            .ok_or_else(|| DeployError::Operation("SSH is not configured".into()))
+    }
+
+    pub async fn list_deployments(&self) -> Result<deploy::DeployOverview, DeployError> {
+        let server_host = self.server_host()?;
+        let result = self
+            .session
+            .with_connection(|connection| async move {
+                deploy::list_deployments(&connection, &server_host)
+                    .await
+                    .map_err(|error| SessionError::Operation(error.to_string()))
+            })
+            .await
+            .map_err(map_deploy_session_error);
+
+        if result.is_ok() {
+            self.session.reset_probe_failure_streak();
+        }
+        result
+    }
+
+    pub async fn run_deploy(
+        &self,
+        repo_url: &str,
+        build_command: Option<&str>,
+        start_command: &str,
+        app_name: Option<&str>,
+        env_content: Option<&str>,
+    ) -> Result<deploy::DeployResult, DeployError> {
+        let server_host = self.server_host()?;
+        let repo_url = repo_url.to_string();
+        let start_command = start_command.to_string();
+        let app_name = app_name.map(str::to_string);
+        let build_command = build_command.map(str::to_string);
+        let env_content = env_content.map(str::to_string);
+
+        let result = self
+            .session
+            .with_connection(|connection| async move {
+                deploy::run_deploy(
+                    &connection,
+                    &server_host,
+                    &repo_url,
+                    build_command.as_deref(),
+                    &start_command,
+                    app_name.as_deref(),
+                    env_content.as_deref(),
+                )
+                .await
+                .map_err(|error| SessionError::Operation(error.to_string()))
+            })
+            .await
+            .map_err(map_deploy_session_error);
+
+        if result.is_ok() {
+            self.session.reset_probe_failure_streak();
+        }
+        result
+    }
+
+    pub async fn read_deploy_env(&self, app_name: &str) -> Result<String, DeployError> {
+        let app_name = app_name.to_string();
+        let result = self
+            .session
+            .with_connection(|connection| async move {
+                deploy::read_deploy_env(&connection, &app_name)
+                    .await
+                    .map_err(|error| SessionError::Operation(error.to_string()))
+            })
+            .await
+            .map_err(map_deploy_session_error);
+
+        if result.is_ok() {
+            self.session.reset_probe_failure_streak();
+        }
+        result
+    }
+
+    pub async fn pull_deploy(
+        &self,
+        app_name: &str,
+    ) -> Result<deploy::DeployResult, DeployError> {
+        let server_host = self.server_host()?;
+        let app_name = app_name.to_string();
+        let result = self
+            .session
+            .with_connection(|connection| async move {
+                deploy::pull_deploy(&connection, &server_host, &app_name)
+                    .await
+                    .map_err(|error| SessionError::Operation(error.to_string()))
+            })
+            .await
+            .map_err(map_deploy_session_error);
+
+        if result.is_ok() {
+            self.session.reset_probe_failure_streak();
+        }
+        result
+    }
+
+    pub async fn remove_deployment(
+        &self,
+        app_name: &str,
+    ) -> Result<deploy::RemoveDeployResult, DeployError> {
+        let app_name = app_name.to_string();
+        let result = self
+            .session
+            .with_connection(|connection| async move {
+                deploy::remove_deployment(&connection, &app_name)
+                    .await
+                    .map_err(|error| SessionError::Operation(error.to_string()))
+            })
+            .await
+            .map_err(map_deploy_session_error);
+
+        if result.is_ok() {
+            self.session.reset_probe_failure_streak();
+        }
+        result
+    }
+
+    pub async fn remove_nginx_proxy(
+        &self,
+        domain: &str,
+    ) -> Result<proxy::RemoveProxyResult, ProxyError> {
+        let domain = domain.to_string();
+        let result = self
+            .session
+            .with_connection(|connection| async move {
+                proxy::remove_proxy(&connection, &domain)
+                    .await
+                    .map_err(|error| SessionError::Operation(error.to_string()))
+            })
+            .await
+            .map_err(map_proxy_session_error);
+
         if result.is_ok() {
             self.session.reset_probe_failure_streak();
         }
@@ -145,14 +455,14 @@ impl SshService {
                                 "initial metrics probe channel failure {streak}/{}: {error} — session kept alive",
                                 config.probe_failure_threshold
                             );
+                            if streak >= 2 {
+                                self.session.signal_transport_recover();
+                            }
                             self.session.publish_mut(&self.snapshot, &app, |snapshot| {
                                 snapshot.state = ConnectionState::Connected;
-                                snapshot.last_error = Some(format!(
-                                    "Metrics temporarily unavailable ({streak}/{}): {error}",
-                                    config.probe_failure_threshold
-                                ));
+                                snapshot.last_error = None;
                                 snapshot.status_message =
-                                    Some("Live session — metrics probe deferred".into());
+                                    Some("Live session — connected".into());
                                 snapshot.last_updated_at = Some(unix_timestamp());
                             });
                         }
@@ -218,6 +528,22 @@ impl SshService {
                             break;
                         }
 
+                        if self.session.take_transport_recover() {
+                            let pty_count = self.session.list_pty_ids().await.len();
+                            if pty_count == 0 {
+                                log::warn!(
+                                    "ssh session recover — recycling transport to clear stale channels"
+                                );
+                                self.session
+                                    .teardown("channel_pool_recover")
+                                    .await;
+                                break;
+                            }
+                            log::debug!(
+                                "transport recover deferred — {pty_count} active PTY channel(s)"
+                            );
+                        }
+
                         ticks_since_stats = ticks_since_stats.saturating_add(1);
                         if ticks_since_stats >= stats_every_ticks {
                             ticks_since_stats = 0;
@@ -262,13 +588,13 @@ impl SshService {
                                     log::warn!(
                                         "metrics probe channel failure {streak}/{probe_threshold}: {error}"
                                     );
+                                    if streak >= 2 {
+                                        self.session.signal_transport_recover();
+                                    }
                                     publish_metrics_degraded(
                                         &self.session,
                                         &self.snapshot,
                                         &app,
-                                        &error,
-                                        streak,
-                                        probe_threshold,
                                     )
                                     .await;
 
@@ -298,6 +624,9 @@ impl SshService {
                                     log::warn!(
                                         "metrics transport error {streak}/{probe_threshold}: {error}"
                                     );
+                                    if streak >= 2 {
+                                        self.session.signal_transport_recover();
+                                    }
                                     if streak >= probe_threshold {
                                         reconnect_attempts =
                                             reconnect_attempts.saturating_add(1);
@@ -323,9 +652,6 @@ impl SshService {
                                         &self.session,
                                         &self.snapshot,
                                         &app,
-                                        &error,
-                                        streak,
-                                        probe_threshold,
                                     )
                                     .await;
                                 }
@@ -442,6 +768,32 @@ pub fn config_error_message(error: ConfigError) -> String {
     error.to_string()
 }
 
+fn map_proxy_session_error(error: SessionError) -> ProxyError {
+    match error {
+        SessionError::NotConnected => {
+            ProxyError::Operation("SSH session is not connected".into())
+        }
+        SessionError::Expired => {
+            ProxyError::Operation("SSH session expired — try again".into())
+        }
+        SessionError::Command(ssh) => ProxyError::Ssh(ssh),
+        SessionError::Explorer(explorer) => ProxyError::Operation(explorer.to_string()),
+        SessionError::Operation(message) => ProxyError::Operation(message),
+    }
+}
+
+fn map_deploy_session_error(error: SessionError) -> DeployError {
+    match error {
+        SessionError::NotConnected => {
+            DeployError::Operation("SSH session is not connected".into())
+        }
+        SessionError::Expired => DeployError::Operation("SSH session expired — try again".into()),
+        SessionError::Command(ssh) => DeployError::Ssh(ssh),
+        SessionError::Explorer(explorer) => DeployError::Operation(explorer.to_string()),
+        SessionError::Operation(message) => DeployError::Operation(message),
+    }
+}
+
 fn next_retry_delay(current: u64, max: u64) -> u64 {
     (current.saturating_mul(2)).min(max)
 }
@@ -457,24 +809,15 @@ async fn publish_metrics_degraded(
     session: &SessionController,
     snapshot_store: &RwLock<SshSnapshot>,
     app: &AppHandle,
-    error: &SessionError,
-    streak: u32,
-    threshold: u32,
 ) {
     let pty_count = session.list_pty_ids().await.len();
     session.publish_mut(snapshot_store, app, |snapshot| {
         snapshot.last_updated_at = Some(unix_timestamp());
-        if pty_count > 0 {
-            snapshot.last_error = None;
-            snapshot.status_message = Some(format!(
-                "Live session — {pty_count} terminal(s) active"
-            ));
-            return;
-        }
-        snapshot.last_error = Some(format!(
-            "Metrics probe deferred ({streak}/{threshold}): {error}"
-        ));
-        snapshot.status_message =
-            Some("Live session — metrics temporarily unavailable".into());
+        snapshot.last_error = None;
+        snapshot.status_message = if pty_count > 0 {
+            Some(format!("Live session — {pty_count} terminal(s) active"))
+        } else {
+            Some("Live session — connected".into())
+        };
     });
 }

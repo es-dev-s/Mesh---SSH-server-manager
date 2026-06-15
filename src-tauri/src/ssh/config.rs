@@ -19,6 +19,8 @@ pub struct SshConfig {
     pub max_retry_ms: u64,
     pub connect_timeout_secs: u64,
     pub exec_timeout_secs: u64,
+    /// IP shown in Proxy DNS instructions (Cloudflare A record). Defaults to SSH_HOST.
+    pub dns_ip: String,
 }
 
 #[derive(Debug, Error)]
@@ -32,7 +34,7 @@ pub enum ConfigError {
 }
 
 pub fn load_ssh_config() -> Result<SshConfig, ConfigError> {
-    load_dotenv_files();
+    crate::env_loader::load_dotenv_files();
 
     let name = env::var("SSH_NAME").unwrap_or_else(|_| "es".into());
     let user = env::var("SSH_USER").unwrap_or_else(|_| name.clone());
@@ -69,6 +71,11 @@ pub fn load_ssh_config() -> Result<SshConfig, ConfigError> {
         }
     }
 
+    let dns_ip = env::var("SERVER_DNS_IP")
+        .ok()
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| host.clone());
+
     Ok(SshConfig {
         name,
         user,
@@ -84,6 +91,7 @@ pub fn load_ssh_config() -> Result<SshConfig, ConfigError> {
         max_retry_ms: parse_u64("SSH_MAX_RETRY_MS", 30_000),
         connect_timeout_secs: parse_u64("SSH_CONNECT_TIMEOUT_SECS", 15),
         exec_timeout_secs: parse_u64("SSH_EXEC_TIMEOUT_SECS", 45),
+        dns_ip,
     })
 }
 
@@ -103,21 +111,4 @@ fn parse_u32(name: &str, default: u32) -> u32 {
         .ok()
         .and_then(|value| value.parse().ok())
         .unwrap_or(default)
-}
-
-fn load_dotenv_files() {
-    let _ = dotenvy::dotenv();
-
-    if let Ok(manifest_dir) = env::var("CARGO_MANIFEST_DIR") {
-        let candidates = [
-            Path::new(&manifest_dir).join("../.env"),
-            Path::new(&manifest_dir).join(".env"),
-        ];
-
-        for candidate in candidates {
-            if candidate.exists() {
-                let _ = dotenvy::from_path(candidate);
-            }
-        }
-    }
 }

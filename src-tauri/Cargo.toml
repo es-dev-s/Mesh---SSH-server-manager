@@ -1,8 +1,8 @@
 [package]
 name = "mesh"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "SSH management Syatem"
+authors = ["Pawan Ojha"]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -16,10 +16,13 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+dotenvy = "0.15"
+serde_json = "1"
 
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
+tauri-plugin-updater = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 russh = "0.44"
@@ -32,5 +35,9 @@ thiserror = "1"
 base64 = "0.22"
 log = "0.4"
 env_logger = "0.11"
-
+aws-config = { version = "1", features = ["behavior-version-latest"] }
+aws-credential-types = "1"
+aws-sdk-s3 = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+url = "2"
 

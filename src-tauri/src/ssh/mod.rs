@@ -8,6 +8,8 @@ pub mod session;
 pub mod types;
 pub mod terminal;
 pub mod editor;
+pub mod proxy;
+pub mod deploy;
 
 pub use manager::SshService;
 

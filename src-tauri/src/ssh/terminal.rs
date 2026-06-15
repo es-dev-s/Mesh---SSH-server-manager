@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use crate::ssh::SshService;
@@ -23,6 +24,8 @@ pub struct TerminalSession {
 pub struct TerminalRegistry {
     pub sessions: Mutex<HashMap<String, TerminalSession>>,
     spawn_counter: AtomicU64,
+    /// Serializes `create_terminal_session` per terminal id (StrictMode double-mount).
+    create_locks: Mutex<HashMap<String, Arc<Mutex<()>>>>,
 }
 
 impl Default for TerminalRegistry {
@@ -30,6 +33,7 @@ impl Default for TerminalRegistry {
         Self {
             sessions: Mutex::new(HashMap::new()),
             spawn_counter: AtomicU64::new(0),
+            create_locks: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -49,6 +53,25 @@ impl TerminalRegistry {
 
     pub async fn list_session_ids(&self) -> Vec<String> {
         self.sessions.lock().await.keys().cloned().collect()
+    }
+
+    pub async fn active_spawn_generation(&self, id: &str) -> Option<u64> {
+        self.sessions
+            .lock()
+            .await
+            .get(id)
+            .map(|session| session.spawn_generation)
+    }
+
+    async fn acquire_create_lock(&self, id: &str) -> tokio::sync::OwnedMutexGuard<()> {
+        let lock = {
+            let mut locks = self.create_locks.lock().await;
+            locks
+                .entry(id.to_string())
+                .or_insert_with(|| Arc::new(Mutex::new(())))
+                .clone()
+        };
+        lock.lock_owned().await
     }
 }
 
@@ -94,6 +117,20 @@ fn is_ephemeral_open_error(error: &str) -> bool {
         || lower.contains("resource shortage")
         || lower.contains("channel failure")
         || lower.contains("open refused")
+}
+
+async fn shutdown_pty_channel(channel: &mut russh::Channel<russh::client::Msg>) {
+    let _ = channel.eof().await;
+    if channel.close().await.is_ok() {
+        let _ = tokio::time::timeout(Duration::from_secs(2), async {
+            while let Some(msg) = channel.wait().await {
+                if matches!(msg, ChannelMsg::Close) {
+                    break;
+                }
+            }
+        })
+        .await;
+    }
 }
 
 async fn open_pty_channel_with_retry(
@@ -271,7 +308,7 @@ async fn reopen_pty_channel(
         .pty_registration(terminal_id)
         .await
         .unwrap_or(crate::ssh::session::PtyRegistration { cols, rows });
-    open_pty_channel(
+    open_pty_channel_with_retry(
         service,
         terminal_id,
         registration.cols,
@@ -318,6 +355,16 @@ async fn close_terminal_session_inner(
     }
 
     log::info!("pty close requested terminal_id={id}");
+}
+
+async fn close_terminal_session_locked(
+    id: &str,
+    expected_spawn_generation: Option<u64>,
+    service: &SshService,
+    registry: &TerminalRegistry,
+) {
+    let _guard = registry.acquire_create_lock(id).await;
+    close_terminal_session_inner(id, expected_spawn_generation, service, registry).await;
 }
 
 #[tauri::command]
@@ -378,7 +425,7 @@ pub async fn sync_terminal_sessions(
 
     for id in backend_ids {
         if !active.contains(&id) {
-            close_terminal_session_inner(&id, None, &service, &registry).await;
+            close_terminal_session_locked(&id, None, &service, &registry).await;
             closed.push(id);
         }
     }
@@ -399,22 +446,23 @@ pub async fn create_terminal_session(
     registry: State<'_, std::sync::Arc<TerminalRegistry>>,
     app: AppHandle,
 ) -> Result<u64, String> {
+    let _create_guard = registry.inner().acquire_create_lock(&id).await;
+
     let cols = cols as u32;
     let rows = rows as u32;
     let (cols, rows) = normalize_dimensions(cols, rows);
-    let spawn_generation = registry.next_spawn_generation();
-    let ssh_session_id = service.session.current_session_id();
 
-    {
-        let mut sessions = registry.sessions.lock().await;
-        if let Some(old) = sessions.remove(&id) {
+    if service.session.is_pty_registered(&id).await {
+        if let Some(existing_generation) = registry.active_spawn_generation(&id).await {
             log::info!(
-                "pty create superseding prior spawn terminal_id={id} old_spawn_generation={}",
-                old.spawn_generation
+                "pty create skipped terminal_id={id} reason=already_active spawn_generation={existing_generation}"
             );
-            let _ = old.sender.send(TerminalAction::Close);
+            return Ok(existing_generation);
         }
     }
+
+    let spawn_generation = registry.next_spawn_generation();
+    let ssh_session_id = service.session.current_session_id();
 
     let active_count = registry.list_session_ids().await.len();
     log::info!(
@@ -440,6 +488,9 @@ pub async fn create_terminal_session(
         Ok(channel) => channel,
         Err(error) => {
             service.session.unregister_pty(&id).await;
+            if is_ephemeral_open_error(&error) {
+                service.session.signal_transport_recover();
+            }
             log::warn!("pty create failed terminal_id={id} error={error}");
             return Err(error);
         }
@@ -480,6 +531,7 @@ pub async fn create_terminal_session(
                 log::info!(
                     "pty task exit terminal_id={terminal_id} spawn_generation={spawn_generation} reason=superseded"
                 );
+                shutdown_pty_channel(&mut channel).await;
                 break;
             }
 
@@ -487,6 +539,7 @@ pub async fn create_terminal_session(
                 log::info!(
                     "pty task exit terminal_id={terminal_id} spawn_generation={spawn_generation} reason=unregistered"
                 );
+                shutdown_pty_channel(&mut channel).await;
                 break;
             }
 
@@ -497,6 +550,8 @@ pub async fn create_terminal_session(
                 &mut input_rx,
             )
             .await;
+
+            shutdown_pty_channel(&mut channel).await;
 
             if user_closed {
                 log::info!(
@@ -669,6 +724,6 @@ pub async fn close_terminal_session(
     service: State<'_, std::sync::Arc<SshService>>,
     registry: State<'_, std::sync::Arc<TerminalRegistry>>,
 ) -> Result<(), String> {
-    close_terminal_session_inner(&id, spawn_generation, &service, &registry).await;
+    close_terminal_session_locked(&id, spawn_generation, &service, &registry).await;
     Ok(())
 }

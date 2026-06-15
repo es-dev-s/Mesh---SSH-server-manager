@@ -1,0 +1,34 @@
+[[permission]]
+identifier = "allow-mesh-commands"
+description = "Allows Mesh main-window invoke commands."
+commands.allow = [
+  "get_ssh_status",
+  "list_remote_directory",
+  "get_remote_home",
+  "create_remote_directory",
+  "create_remote_file",
+  "restart_pm2_process",
+  "list_nginx_proxies",
+  "stage_nginx_proxy",
+  "create_nginx_proxy",
+  "check_dns_resolution",
+  "reload_nginx",
+  "list_deployments",
+  "run_deploy",
+  "read_deploy_env",
+  "pull_deploy",
+  "remove_deployment",
+  "remove_nginx_proxy",
+  "mesh_store_get",
+  "mesh_store_set",
+  "mesh_store_delete",
+  "quit_mesh",
+  "create_terminal_session",
+  "write_terminal_input",
+  "resize_terminal_session",
+  "close_terminal_session",
+  "list_terminal_sessions",
+  "sync_terminal_sessions",
+  "read_remote_file",
+  "write_remote_file"
+]

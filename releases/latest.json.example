@@ -1,0 +1,11 @@
+{
+  "version": "0.1.1",
+  "notes": "Mesh update",
+  "pub_date": "2026-06-15T00:00:00Z",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "SIGNATURE_FROM_tauri_signer_OR_build_output",
+      "url": "https://pub-589c5204efa64f9794ce83b5be0d3565.r2.dev/mesh_0.1.1_x64-setup.exe"
+    }
+  }
+}

@@ -1,4 +1,5 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { invoke } from "@tauri-apps/api/core";
 import { Minus, X } from "lucide-react";
 
 export function WindowControls() {
@@ -7,12 +8,11 @@ export function WindowControls() {
   }
 
   async function close() {
-    await getCurrentWindow().close();
+    await invoke("quit_mesh");
   }
 
   return (
     <div className="flex items-center select-none" data-no-drag="true">
-      {/* Minimize */}
       <button
         type="button"
         onClick={minimize}
@@ -22,7 +22,6 @@ export function WindowControls() {
         <Minus className="h-3.5 w-3.5" strokeWidth={1.5} />
       </button>
 
-      {/* Close */}
       <button
         type="button"
         onClick={close}

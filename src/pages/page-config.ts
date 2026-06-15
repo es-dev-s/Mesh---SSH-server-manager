@@ -1,4 +1,4 @@
-export type PageId = "home" | "server";
+export type PageId = "home" | "server" | "proxy" | "deploy";
 
 export type PageMeta = {
   id: PageId;
@@ -16,6 +16,16 @@ export const pages: Record<PageId, PageMeta> = {
     id: "server",
     title: "Server",
     description: "Manage connections, status, and server configuration.",
+  },
+  proxy: {
+    id: "proxy",
+    title: "Proxy",
+    description: "Manage nginx reverse-proxy mappings and domain setup.",
+  },
+  deploy: {
+    id: "deploy",
+    title: "Deploy",
+    description: "Deploy GitHub apps to the server with PM2 and go live.",
   },
 };
 

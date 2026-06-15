@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-pin-island"
+description = "Allows pinning the island window visible and on top."
+commands.allow = ["pin_island"]

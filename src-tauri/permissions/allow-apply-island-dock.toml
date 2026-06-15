@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-apply-island-dock"
+description = "Allows applying island dock position and z-order."
+commands.allow = ["apply_island_dock"]

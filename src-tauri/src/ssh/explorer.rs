@@ -55,6 +55,62 @@ pub async fn list_directory(
     parse_directory_listing(&payload)
 }
 
+pub async fn resolve_home(connection: &SshConnection) -> Result<String, ExplorerError> {
+    let payload = connection
+        .exec(r#"sh -c 'printf %s "$HOME"'"#)
+        .await?
+        .trim()
+        .to_string();
+
+    if payload.is_empty() {
+        return Err(ExplorerError::InvalidPath(
+            "could not resolve remote home directory".into(),
+        ));
+    }
+
+    validate_remote_path(&payload)?;
+    Ok(payload)
+}
+
+pub async fn create_directory(
+    connection: &SshConnection,
+    path: &str,
+) -> Result<(), ExplorerError> {
+    validate_remote_path(path)?;
+    validate_entry_name(path.rsplit('/').next().unwrap_or(""))?;
+
+    let escaped = escape_shell_single(path);
+    let script = format!(r#"sh -c 'mkdir -p {escaped}'"#);
+    connection.exec(&script).await?;
+    Ok(())
+}
+
+pub async fn create_file(connection: &SshConnection, path: &str) -> Result<(), ExplorerError> {
+    validate_remote_path(path)?;
+    validate_entry_name(path.rsplit('/').next().unwrap_or(""))?;
+
+    let parent = path.rfind('/').map(|index| &path[..index]).unwrap_or("/");
+    validate_remote_path(parent)?;
+
+    let escaped_parent = escape_shell_single(parent);
+    let escaped = escape_shell_single(path);
+    let script = format!(r#"sh -c 'mkdir -p {escaped_parent} && : > {escaped}'"#);
+    connection.exec(&script).await?;
+    Ok(())
+}
+
+fn validate_entry_name(name: &str) -> Result<(), ExplorerError> {
+    if name.is_empty() || name.len() > 255 {
+        return Err(ExplorerError::InvalidPath(
+            "name must be 1–255 characters".into(),
+        ));
+    }
+    if name == "." || name == ".." || name.contains('/') {
+        return Err(ExplorerError::InvalidPath("invalid file or folder name".into()));
+    }
+    Ok(())
+}
+
 fn validate_remote_path(path: &str) -> Result<(), ExplorerError> {
     if !path.starts_with('/') {
         return Err(ExplorerError::InvalidPath(

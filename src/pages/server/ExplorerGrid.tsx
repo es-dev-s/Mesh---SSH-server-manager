@@ -247,7 +247,7 @@ export function ExplorerGrid({
       <div className="flex h-full min-h-[240px] flex-col items-center justify-center text-center">
         <p className="text-[13px] font-medium text-neutral-400">This folder is empty</p>
         <p className="mt-1 text-[11px] text-neutral-500">
-          No files or folders to display
+          Use New folder or New file above to create items here
         </p>
       </div>
     );

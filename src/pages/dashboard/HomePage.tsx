@@ -1,34 +1,22 @@
 import { useSshStore } from "../../hooks/useSshMonitor";
-import { ConnectionPanel, ConnectionStatusBadge } from "./ConnectionStatusBadge";
+import { ConnectionStatusBadge } from "./ConnectionStatusBadge";
 import { DashboardPlaceholder, DeviceDashboard } from "./DeviceDashboard";
 
 export function HomePage() {
   const snapshot = useSshStore((state) => state.snapshot);
-  const endpoint = `${snapshot.user}@${snapshot.host}:${snapshot.port}`;
   const hasMetrics = snapshot.specs && snapshot.storage;
   const isLive = snapshot.state === "connected";
 
   return (
-    <div className="flex h-full flex-col overflow-y-auto px-8 py-7">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="text-[10px] font-semibold tracking-[0.08em] text-white/40 uppercase">
-            Dashboard
-          </p>
-          <h2 className="mt-1 text-[24px] font-semibold tracking-tight text-[#f8f9fa]">
-            {snapshot.name}
-          </h2>
-          <p className="mt-1 text-[13px] text-neutral-400">{endpoint}</p>
-        </div>
-
+    <div className="flex h-full flex-col overflow-y-auto px-6 py-5">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-[20px] font-semibold tracking-tight text-[#f8f9fa]">
+          {snapshot.name}
+        </h2>
         <ConnectionStatusBadge state={snapshot.state} />
       </div>
 
-      <div className="mt-5">
-        <ConnectionPanel snapshot={snapshot} />
-      </div>
-
-      <div className="mt-6 min-h-0 flex-1">
+      <div className="mt-5 min-h-0 flex-1">
         {hasMetrics ? (
           <div className="space-y-3">
             {!isLive && (
